@@ -1,10 +1,29 @@
 <?php
+$db = mysqli_connect("127.0.0.1", "root", "", "statsite");
+
+if (!$db) {
+    echo "Error: Unable to connect to MySQL." . PHP_EOL ."<br/>";
+    echo "Debugging errno: " . mysqli_connect_errno() . PHP_EOL ."<br/>";
+    echo "Debugging error: " . mysqli_connect_error() . PHP_EOL ."<br/>";
+    mysqli_close($db);
+
+    exit;
+}
+
+//echo "Success: A proper connection to MySQL was made! The my_db database is great." . PHP_EOL;
+//echo "Host information: " . mysqli_get_host_info($link) . PHP_EOL;
+//mysqli_close($db);
+
+/*
+ * get the multigp id from the keys section of each page pilot, chapter, and event have them.
+ */
+
 $nextPage;
 $prevPage;
-$lastPageNum = 2;
+$lastPageNum = 1;
 $currentPageNum;
 
-for($i=0;$i < $lastPageNum; $i++)
+for($i=0;$i <= $lastPageNum; $i++)
 {
     $html = file_get_contents('https://www.multigp.com/mgp/chapters?Chapter_page='.$i);
     libxml_use_internal_errors(true);
@@ -12,19 +31,12 @@ for($i=0;$i < $lastPageNum; $i++)
     $dom->loadHTML($html);
     getChapterNodes($dom);
 }
-//not used
-function getNumberOfChapters()
-{
-    $ele = $dom->getElementById("yw2")->firstChild->nextSibling->textContent;
-    $str = substr($ele, 18);
-    $numberOfChapters = filter_var($str, FILTER_SANITIZE_NUMBER_INT);
-    echo "<br>". $numberOfChapters;
-}
 
 function getChapterNodes($doc)
 {
-    global $nextPage,$prevPage,$lastPageNum,$currentPageNum;
+    global $nextPage,$prevPage,$lastPageNum,$currentPageNum,$db;
     $xpath = new DomXPath($doc);
+    $nodesChapterId = $xpath->query('//*[@id="yw2"]/div[5]/span');
     $nodesChapterNames = $xpath->query('//*[@id="featured-chapters"]/div[2]/h3/a');
     $nodesChapterLinks = $xpath->query('//*[@id="featured-chapters"]/div[2]/h3/a/@href');
     $nodesChapterImage = $xpath->query('//*[@id="featured-chapters"]/div[1]/a/img/@src');
@@ -53,8 +65,28 @@ function getChapterNodes($doc)
     }
      
     for($i = 0; $i < $nodesChapterNames->count();$i++)
-    {       
-        echo $nodesChapterNames->item($i)->nodeValue . "<br>" . "multigp.com" . $nodesChapterLinks->item($i)->textContent . "<br>" . $nodesChapterImage->item($i)->textContent . "<br>" . $nodesChapterLocation->item($i)->textContent . "<br>" . $nodesChapterNumOfMembers->item($i)->textContent . "<br>" . $nodesChapterNumOfEvents->item($i)->textContent. "<br><br><br>"; 
+    {    
+        $chapterId = mysqli_real_escape_string($db,$nodesChapterId->item($i)->textContent);
+        $chapterName = mysqli_real_escape_string($db,$nodesChapterNames->item($i)->nodeValue);
+        $chapterEventsHeld = mysqli_real_escape_string($db,$nodesChapterNumOfEvents->item($i)->textContent);
+        $chapterMemberTotal = mysqli_real_escape_string($db,$nodesChapterNumOfMembers->item($i)->textContent);
+        $chapterLocation = mysqli_real_escape_string($db,$nodesChapterLocation->item($i)->textContent);
+        $chapterURL = mysqli_real_escape_string ($db, "multigp.com" . $nodesChapterLinks->item($i)->textContent);
+        $chapterImageURL = mysqli_real_escape_string($db, $nodesChapterImage->item($i)->textContent);
+       
+        $sql = "INSERT INTO `chapters`(`id`, `name`, `events`, `members`, `location`, `mgpurl`, `image`)"
+                ."VALUES ('{$chapterId}', '{$chapterName}', '{$chapterEventsHeld}','{$chapterMemberTotal}','{$chapterLocation}','{$chapterURL}','{$chapterImageURL}')" 
+                ."ON DUPLICATE KEY UPDATE `id`='{$chapterId}', `name`='{$chapterName}', `events`='{$chapterEventsHeld}', `members`='{$chapterMemberTotal}', `location`='{$chapterLocation}', `mgpurl`='{$chapterURL}', `image`='{$chapterImageURL}'";
+        if(mysqli_query($db, $sql))
+        {
+            echo "Records inserted successfully.  $chapterURL <br/>";
+        } 
+        else
+        {
+            echo "ERROR: Could not able to execute $sql. <br/>" . mysqli_error($db). "<br/>";
+            mysqli_close($db);
+        }
+        echo $nodesChapterId->item($i)->nodeValue . "<br>" . $nodesChapterNames->item($i)->nodeValue . "<br>" . "multigp.com" . $nodesChapterLinks->item($i)->textContent . "<br>" . $nodesChapterImage->item($i)->textContent . "<br>" . $nodesChapterLocation->item($i)->textContent . "<br>" . $nodesChapterNumOfMembers->item($i)->textContent . "<br>" . $nodesChapterNumOfEvents->item($i)->textContent. "<br><br><br>"; 
     }
 } 
 
@@ -64,5 +96,16 @@ function outerHTML($e)
     $doc->appendChild($doc->importNode($e, true));
     return $doc->saveHTML();
 }
+
+function getNumberOfChapters() //not used
+{
+    $ele = $dom->getElementById("yw2")->firstChild->nextSibling->textContent;
+    $str = substr($ele, 18);
+    $numberOfChapters = filter_var($str, FILTER_SANITIZE_NUMBER_INT);
+    echo "<br>". $numberOfChapters;
+}
+
+
+mysqli_close($db);
 
 ?>
